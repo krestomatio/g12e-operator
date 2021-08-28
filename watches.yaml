@@ -3,5 +3,10 @@
 - version: v1alpha1
   group: app.krestomat.io
   kind: G12e
+  reconcilePeriod: 1m
+  finalizer:
+    name: app.krestomat.io/finalizer
+    vars:
+      cr_state: absent
   playbook: playbooks/g12e.yml
 #+kubebuilder:scaffold:watch

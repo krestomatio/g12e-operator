@@ -1,9 +1,70 @@
-# VERSION defines the project version for the bundle.
-# Update this value when you upgrade the version of your project.
-# To re-generate a bundle for another specific version without changing the standard setup, you can:
-# - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
-# - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+CONTAINER_BUILDER ?= docker
+OPERATOR_NAME ?= g12e-operator
+REPO_NAME ?= g12e-operator
+REPO_OWNER ?= krestomatio
+VERSION ?= 0.0.16
+
+# Image
+REGISTRY ?= quay.io
+REGISTRY_PATH ?= $(REGISTRY)/$(REPO_OWNER)
+IMG_NAME ?= $(REGISTRY_PATH)/$(OPERATOR_NAME)
+IMG ?= $(IMG_NAME):$(VERSION)
+
+# requirements
+OPERATOR_VERSION ?= 1.7.2
+KUSTOMIZE_VERSION ?= 4.1.3
+OPM_VERSION ?= 1.15.1
+
+# JX
+JOB_NAME ?= pr
+PULL_NUMBER ?= 0
+BUILD_ID ?= 0
+
+# Build
+BUILD_REGISTRY_PATH ?= docker-registry.jx.krestomat.io/krestomatio
+BUILD_OPERATOR_NAME ?= $(OPERATOR_NAME)
+BUILD_IMG_NAME ?= $(BUILD_REGISTRY_PATH)/$(BUILD_OPERATOR_NAME)
+ifeq ($(JOB_NAME),release)
+BUILD_VERSION ?= $(shell git rev-parse HEAD^2 &>/dev/null && git rev-parse HEAD^2 || echo)
+else
+BUILD_VERSION ?= $(shell git rev-parse HEAD 2> /dev/null  || echo)
+endif
+
+# CI
+SKIP_MSG := skip.ci
+RUN_PIPELINE ?= $(shell git log -1 --pretty=%B | cat | grep -q "\[$(SKIP_MSG)\]" && echo || echo 1)
+ifeq ($(RUN_PIPELINE),)
+SKIP_PIPELINE = true
+$(info RUN_PIPELINE not set, skipping...)
+endif
+ifeq ($(BUILD_VERSION),)
+SKIP_PIPELINE = true
+$(info BUILD_VERSION not set, skipping...)
+endif
+ifeq ($(origin PULL_BASE_SHA),undefined)
+CHANGELOG_FROM ?= HEAD~1
+else
+CHANGELOG_FROM ?= $(PULL_BASE_SHA)
+endif
+
+# molecule
+MOLECULE_SEQUENCE ?= test
+MOLECULE_SCENARIO ?= default
+export OPERATOR_IMAGE ?= $(IMG)
+export TEST_OPERATOR_NAMESPACE ?= g12e-$(JOB_NAME)-$(PULL_NUMBER)-$(BUILD_ID)
+
+# skopeo
+SKOPEO_SRC_TLS ?= True
+SKOPEO_DEST_TLS ?= true
+
+# Release
+GIT_REMOTE ?= origin
+GIT_BRANCH ?= master
+GIT_ADD_FILES ?= Makefile
+CHANGELOG_FILE ?= CHANGELOG.md
+
+# krestomatio ansible collection
+COLLECTION_VERSION ?= 0.0.33
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -29,16 +90,13 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # krestomat.io/g12e-operator-bundle:$VERSION and krestomat.io/g12e-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= krestomat.io/g12e-operator
+IMAGE_TAG_BASE ?= $(IMG_NAME)
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
-
-all: docker-build
+all: collection-build image-build
 
 ##@ General
 
@@ -56,16 +114,76 @@ all: docker-build
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
+.PHONY: git
+git: ## Git add, commit, tag and push
+	git add $(GIT_ADD_FILES)
+	git commit -m "chore(release): $(VERSION)" -m "[$(SKIP_MSG)]"
+	git tag v$(VERSION)
+	git push $(GIT_REMOTE) $(GIT_BRANCH) --tags
+
+.PHONY: molecule
+molecule: ## Test with molecule
+	molecule $(MOLECULE_SEQUENCE) -s $(MOLECULE_SCENARIO)
+
+.PHONY: skopeo-copy
+skopeo-copy: ## Copy images using skopeo
+	# full version
+	skopeo copy --src-tls-verify=$(SKOPEO_SRC_TLS) --dest-tls-verify=$(SKOPEO_DEST_TLS) docker://$(BUILD_IMG_NAME):$(BUILD_VERSION) docker://$(IMG_NAME):$(VERSION)
+	# major + minor
+	skopeo copy --src-tls-verify=$(SKOPEO_SRC_TLS) --dest-tls-verify=$(SKOPEO_DEST_TLS) docker://$(BUILD_IMG_NAME):$(BUILD_VERSION) docker://$(IMG_NAME):$(word 1,$(subst ., ,$(VERSION))).$(word 2,$(subst ., ,$(VERSION)))
+	# major
+	skopeo copy --src-tls-verify=$(SKOPEO_SRC_TLS) --dest-tls-verify=$(SKOPEO_DEST_TLS) docker://$(BUILD_IMG_NAME):$(BUILD_VERSION) docker://$(IMG_NAME):$(word 1,$(subst ., ,$(VERSION)))
+
+##@ JX
+
+.PHONY: jx-changelog
+jx-changelog: ## Generate changelog file using jx
+ifeq (0, $(shell test -d  "charts/$(REPO_NAME)"; echo $$?))
+	sed -i "s/^version:.*/version: $(VERSION)/" charts/$(REPO_NAME)/Chart.yaml
+	sed -i "s/tag:.*/tag: $(VERSION)/" charts/$(REPO_NAME)/values.yaml
+	sed -i "s@repository:.*@repository: $(IMG_NAME)@" charts/$(REPO_NAME)/values.yaml
+	git add charts/
+else
+	echo no charts
+endif
+	jx changelog create --verbose --version=$(VERSION) --rev=$(CHANGELOG_FROM) --output-markdown=$(CHANGELOG_FILE) --update-release=false
+	git add $(CHANGELOG_FILE)
+
 ##@ Build
 
 run: ansible-operator ## Run against the configured Kubernetes cluster in ~/.kube/config
 	ANSIBLE_ROLES_PATH="$(ANSIBLE_ROLES_PATH):$(shell pwd)/roles" $(ANSIBLE_OPERATOR) run
 
-docker-build: ## Build docker image with the manager.
-	docker build -t ${IMG} .
+image-build: ## Build container image with the manager.
+	$(CONTAINER_BUILDER) build . -t $(IMG) \
+		--build-arg COLLECTION_FILE=krestomatio-k8s-$(COLLECTION_VERSION).tar.gz
 
-docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+image-push: ## Push container image with the manager.
+	$(CONTAINER_BUILDER) push $(IMG)
+
+collection-build: ## Build krestomatio collection from path or git to file
+	rm -rf *.tar.gz /tmp/ansible-collection-k8s*
+ifeq (0, $(shell test -d  "$${HOME}/.ansible/collections/ansible_collections/krestomatio/k8s"; echo $$?))
+	cp -rp ~/.ansible/collections/ansible_collections/krestomatio/k8s /tmp/ansible-collection-k8s-$(COLLECTION_VERSION)
+else
+	curl -L https://github.com/krestomatio/ansible-collection-k8s/archive/v$(COLLECTION_VERSION).tar.gz | tar xzf - -C /tmp/
+endif
+	ansible-galaxy collection build --force /tmp/ansible-collection-k8s-$(COLLECTION_VERSION)
+	test -f krestomatio-k8s-$(COLLECTION_VERSION).tar.gz || mv krestomatio-k8s-*.tar.gz krestomatio-k8s-$(COLLECTION_VERSION).tar.gz
+ifneq (0, $(shell test -d  "$${HOME}/.ansible/collections/ansible_collections/krestomatio/k8s"; echo $$?))
+	mkdir -p $${HOME}/.ansible/collections/ansible_collections/krestomatio/
+	cp -rp /tmp/ansible-collection-k8s-$(COLLECTION_VERSION) ~/.ansible/collections/ansible_collections/krestomatio/k8s
+endif
+
+ifneq (0, $(shell test -d  "$${HOME}/.ansible/collections/ansible_collections/krestomatio/k8s"; echo $$?))
+collection-install: collection-build
+collection-install:
+	mkdir -p $${HOME}/.ansible/collections/ansible_collections/krestomatio/
+	cp -rp /tmp/ansible-collection-k8s-$(COLLECTION_VERSION) ~/.ansible/collections/ansible_collections/krestomatio/k8s
+else
+collection-install: ## Install krestomatio collection from git
+	$(info krestomatio collection already installed...)
+endif
 
 ##@ Deployment
 
@@ -93,7 +211,7 @@ ifeq (,$(shell which kustomize 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(KUSTOMIZE)) ;\
-	curl -sSLo - https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v3.8.7/kustomize_v3.8.7_$(OS)_$(ARCH).tar.gz | \
+	curl -sSLo - https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v$(KUSTOMIZE_VERSION)/kustomize_v$(KUSTOMIZE_VERSION)_$(OS)_$(ARCH).tar.gz | \
 	tar xzf - -C bin/ ;\
 	}
 else
@@ -109,7 +227,7 @@ ifeq (,$(shell which ansible-operator 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(ANSIBLE_OPERATOR)) ;\
-	curl -sSLo $(ANSIBLE_OPERATOR) https://github.com/operator-framework/operator-sdk/releases/download/v1.11.0/ansible-operator_$(OS)_$(ARCH) ;\
+	curl -sSLo $(ANSIBLE_OPERATOR) https://github.com/operator-framework/operator-sdk/releases/download/v$(OPERATOR_VERSION)/ansible-operator_$(OS)_$(ARCH) ;\
 	chmod +x $(ANSIBLE_OPERATOR) ;\
 	}
 else
@@ -126,11 +244,11 @@ bundle: kustomize ## Generate bundle manifests and metadata, then validate gener
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(CONTAINER_BUILDER) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) image-push IMG=$(BUNDLE_IMG)
 
 .PHONY: opm
 OPM = ./bin/opm
@@ -140,7 +258,7 @@ ifeq (,$(shell which opm 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.15.1/$(OS)-$(ARCH)-opm ;\
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v$(OPM_VERSION)/$(OS)-$(ARCH)-opm ;\
 	chmod +x $(OPM) ;\
 	}
 else
@@ -165,9 +283,63 @@ endif
 # https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
 .PHONY: catalog-build
 catalog-build: opm ## Build a catalog image.
-	$(OPM) index add --container-tool docker --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
+	$(OPM) index add --container-tool $(CONTAINER_BUILDER) --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
 
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) image-push IMG=$(CATALOG_IMG)
+
+# CI tasks
+## start if not SKIP_PIPELINE
+ifeq ($(origin SKIP_PIPELINE),undefined)
+
+##@ Pullrequest
+
+.PHONY: lint
+lint: MOLECULE_SEQUENCE = lint
+lint: molecule ## Run lint tasks
+
+.PHONY: k8s
+k8s: pr ## Run k8s tasks
+
+.PHONY: pr
+pr: IMG = $(BUILD_IMG_NAME):$(BUILD_VERSION)
+pr: collection-build image-build image-push molecule ## Run pr tasks
+
+##@ Release
+
+.PHONY: changelog
+changelog: jx-changelog ## Generate changelog
+
+.PHONY: release
+release: skopeo-copy ## Run release tasks
+
+.PHONY: promote
+promote: git ## Promote release
+
+## else if not SKIP_PIPELINE
+else
+$(info SKIP_PIPELINE set:)
+## Pull request
+pr:
+	$(info skipping pr...)
+
+lint:
+	$(info skipping lint...)
+
+k8s:
+	$(info skipping k8s...)
+
+## Release
+changelog:
+	$(info skipping changelog...)
+
+release:
+	$(info skipping release...)
+
+promote:
+	$(info skipping promote...)
+
+## end if not SKIP_PIPELINE
+endif
