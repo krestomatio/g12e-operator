@@ -3,5 +3,13 @@ kind: G12e
 metadata:
   name: g12e-sample
 spec:
-  # Add fields here
-  foo: bar
+  ## deploy own database for graphql-engine using postgres
+  graphql_engine_database_deploy: true
+  ## extra graphql-engine environment variables
+  graphql_engine_envvars:
+    - name: HASURA_GRAPHQL_ENABLE_CONSOLE
+      value: "true"
+    - name: HASURA_GRAPHQL_DEV_MODE
+      value: "true"
+    - name: HASURA_GRAPHQL_ENABLED_LOG_TYPES
+      value: startup, http-log, webhook-log, websocket-log, query-log
