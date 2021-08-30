@@ -1,0 +1,20 @@
+# permissions for end users to view g12es.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: g12e-viewer-role
+rules:
+- apiGroups:
+  - app.krestomat.io
+  resources:
+  - g12es
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - app.krestomat.io
+  resources:
+  - g12es/status
+  verbs:
+  - get

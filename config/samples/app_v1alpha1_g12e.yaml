@@ -1,0 +1,7 @@
+apiVersion: app.krestomat.io/v1alpha1
+kind: G12e
+metadata:
+  name: g12e-sample
+spec:
+  # Add fields here
+  foo: bar

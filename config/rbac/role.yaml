@@ -37,4 +37,21 @@ rules:
       - patch
       - update
       - watch
+  ##
+  ## Rules for app.krestomat.io/v1alpha1, Kind: G12e
+  ##
+  - apiGroups:
+      - app.krestomat.io
+    resources:
+      - g12es
+      - g12es/status
+      - g12es/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
 #+kubebuilder:scaffold:rules

@@ -1,0 +1,24 @@
+# permissions for end users to edit g12es.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: g12e-editor-role
+rules:
+- apiGroups:
+  - app.krestomat.io
+  resources:
+  - g12es
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - app.krestomat.io
+  resources:
+  - g12es/status
+  verbs:
+  - get

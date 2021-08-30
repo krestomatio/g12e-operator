@@ -1,3 +1,7 @@
 ---
 # Use the 'create api' subcommand to add watches to this file.
+- version: v1alpha1
+  group: app.krestomat.io
+  kind: G12e
+  playbook: playbooks/g12e.yml
 #+kubebuilder:scaffold:watch
