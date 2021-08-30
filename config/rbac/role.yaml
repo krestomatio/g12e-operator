@@ -14,6 +14,8 @@ rules:
       - pods
       - pods/exec
       - pods/log
+      - persistentvolumeclaims
+      - services
     verbs:
       - create
       - delete
@@ -46,6 +48,37 @@ rules:
       - g12es
       - g12es/status
       - g12es/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  ##
+  ## Rules for Openshift route
+  ##
+  - apiGroups:
+      - route.openshift.io
+    resources:
+      - routes
+      - routes/custom-host
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  ##
+  ## Rules for ingress
+  ##
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
     verbs:
       - create
       - delete
