@@ -9,4 +9,8 @@
     vars:
       cr_state: absent
   playbook: playbooks/g12e.yml
+- version: v1alpha1
+  group: app.krestomat.io
+  kind: Server
+  playbook: playbooks/server.yml
 #+kubebuilder:scaffold:watch

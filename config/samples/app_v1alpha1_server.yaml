@@ -1,0 +1,14 @@
+apiVersion: app.krestomat.io/v1alpha1
+kind: Server
+metadata:
+  name: server-sample
+spec:
+  # container image for server, example from: https://github.com/hasura/hasura-k8s-stack/
+  server_image: hasura/k8s-stack-event-triggers:6c3a63c
+  server_args: "['npm', 'run', 'start-prod']"
+
+  ## whether to deploy/add an ingress or not
+  server_ingress_deploy: false
+
+  ## deploy own database for server using postgres
+  server_database_deploy: false

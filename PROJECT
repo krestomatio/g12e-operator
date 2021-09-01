@@ -13,4 +13,11 @@ resources:
   group: app
   kind: G12e
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: krestomat.io
+  group: app
+  kind: Server
+  version: v1alpha1
 version: "3"

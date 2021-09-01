@@ -3,4 +3,5 @@
 # It should be run by config/default
 resources:
 - bases/app.krestomat.io_g12es.yaml
+- bases/app.krestomat.io_servers.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
