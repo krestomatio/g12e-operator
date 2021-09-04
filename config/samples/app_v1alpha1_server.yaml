@@ -12,3 +12,13 @@ spec:
 
   ## deploy own database for server using postgres
   server_database_deploy: false
+
+  ## secret handler as an environment variable
+  server_secret_handler: true
+  ## get the handler secret value from this G12e resource name
+  graphql_engine_name: g12e-sample
+
+  ## add environment variables from this list of secrets:
+  # server_secret_envfrom:
+  #   - secretName1
+  #   - secretName2

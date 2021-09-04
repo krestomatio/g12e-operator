@@ -5,6 +5,7 @@ metadata:
 spec:
   ## deploy own database for graphql-engine using postgres
   graphql_engine_database_deploy: true
+
   ## extra graphql-engine environment variables
   graphql_engine_envvars:
     - name: HASURA_GRAPHQL_ENABLE_CONSOLE
@@ -13,3 +14,8 @@ spec:
       value: "true"
     - name: HASURA_GRAPHQL_ENABLED_LOG_TYPES
       value: startup, http-log, webhook-log, websocket-log, query-log
+
+  ## add environment variables from this list of secrets:
+  # graphql_engine_secret_envfrom:
+  #   - secretName1
+  #   - secretName2
