@@ -18,6 +18,8 @@
 
 ### Chores
 
+* update: bump collection krestomatio.k8s 0.0.44 (krestomatio-cibot)
+* release: 0.0.1 (krestomatio-cibot)
 * ci: update makefiles submodule ref (Job Céspedes Ortiz)
 * update: bump collection krestomatio.k8s 0.0.40 (krestomatio-cibot)
 * ci: update catalog ref (Job Céspedes Ortiz)
