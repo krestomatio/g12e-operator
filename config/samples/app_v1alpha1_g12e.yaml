@@ -3,6 +3,10 @@ kind: G12e
 metadata:
   name: g12e-sample
 spec:
+  ## graphql-engine host and protocol. Default protocol is 'http'
+  graphql_engine_ingress_host: "example.krestomat.io"
+  graphql_engine_ingress_protocol: "http"
+
   ## deploy own database for graphql-engine using postgres
   graphql_engine_database_deploy: true
 
