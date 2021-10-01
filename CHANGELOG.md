@@ -1,5 +1,5 @@
 ## Changes
 
-### Documentation
+### Chores
 
-* update sample (Job Céspedes Ortiz)
+* update: bump collection krestomatio.k8s 0.0.45 (krestomatio-cibot)
